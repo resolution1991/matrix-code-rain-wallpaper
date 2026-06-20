@@ -1,0 +1,11 @@
+.DS_Store
+
+.build/
+.swiftpm/
+
+dist/
+*.app/
+*.dSYM/
+
+performance-sample-*.txt
+rollback-snapshots/

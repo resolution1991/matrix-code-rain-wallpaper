@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <mask id="cutout">
+      <rect width="1024" height="1024" fill="#000000"/>
+      <rect x="76" y="76" width="872" height="872" rx="196" fill="#ffffff"/>
+      <path d="M 312 712 L 312 312 L 512 540 L 712 312 L 712 712"
+            fill="none"
+            stroke="#000000"
+            stroke-width="120"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <rect x="76" y="76" width="872" height="872" rx="196" fill="#ffffff" mask="url(#cutout)"/>
+</svg>
