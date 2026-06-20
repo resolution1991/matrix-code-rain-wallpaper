@@ -1,5 +1,7 @@
 # Matrix code rain wallpaper
 
+Current baseline version: **0.2.0**
+
 **Matrix code rain wallpaper** is a lightweight macOS menu-bar wallpaper app inspired by the digital-rain atmosphere of *The Matrix*. It renders animated code rain and a large digital clock directly on the desktop, while keeping system resource usage low through a Metal/GPU rendering pipeline.
 
 This project was designed, iterated, optimized, and packaged by **Algernon** with the assistance of **Codex**, OpenAI's coding agent tool. Codex was used throughout the development process for implementation, performance tuning, UI behavior refinement, packaging, and project maintenance.
