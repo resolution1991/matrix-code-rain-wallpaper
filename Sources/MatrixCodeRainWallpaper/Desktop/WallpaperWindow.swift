@@ -4,7 +4,7 @@ import CoreGraphics
 final class WallpaperWindow: NSWindow {
     private var rainView: MetalRainView?
 
-    init(screen: NSScreen, isPaused: Bool) {
+    init(screen: NSScreen, isPaused: Bool, settings: AppSettings) {
         let frame = screen.frame
 
         super.init(
@@ -25,7 +25,10 @@ final class WallpaperWindow: NSWindow {
         isReleasedWhenClosed = false
         canHide = false
 
-        let view = MetalRainView(frame: NSRect(origin: .zero, size: frame.size))
+        let view = MetalRainView(
+            frame: NSRect(origin: .zero, size: frame.size),
+            settings: settings
+        )
         view.autoresizingMask = [.width, .height]
         contentView = view
         rainView = view
@@ -41,6 +44,10 @@ final class WallpaperWindow: NSWindow {
 
     func resumeAnimation() {
         rainView?.resume()
+    }
+
+    func updateVisualSettings(_ settings: AppSettings) {
+        rainView?.updateVisualSettings(settings)
     }
 
     func showWallpaper() {

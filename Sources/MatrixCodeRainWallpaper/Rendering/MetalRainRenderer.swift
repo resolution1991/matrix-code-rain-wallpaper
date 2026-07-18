@@ -54,6 +54,7 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
         var origin: SIMD2<Float>
         var size: SIMD2<Float>
         var cellSize: Float
+        var cellAdvance: Float
     }
 
     private struct Uniforms {
@@ -333,6 +334,7 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
     private let clockGlyphWidthScale: Float = 1.14
     private let clockGlyphHeightScale: Float = 1.24
     private let clockGlowScale: Float = 1.08
+    private let clockSpacingScale: Float = 0.8
     private let rainGlyphMutationPeriod: TimeInterval = 0.5
     private let rainGlyphMutationChance: Float = 0.12
     private let clockGlyphMinimumMutationInterval: TimeInterval = 2.0
@@ -381,13 +383,22 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
     private var nextClockGlyphMutationTime: TimeInterval = .greatestFiniteMagnitude
     private var nextClockGlyphMutationBatchTime: TimeInterval = 0
     private var nextClockTextCheckTime: TimeInterval = 0
+    private var showsDigitalClock: Bool
+    private var rainDensity: RainDensity
 
     private var rainVisibleSlotsPerColumn: Int {
         maxRainLength + 2
     }
 
-    init(device: MTLDevice, pixelFormat: MTLPixelFormat) {
+    init(
+        device: MTLDevice,
+        pixelFormat: MTLPixelFormat,
+        showsDigitalClock: Bool,
+        rainDensity: RainDensity
+    ) {
         self.device = device
+        self.showsDigitalClock = showsDigitalClock
+        self.rainDensity = rainDensity
 
         guard let commandQueue = device.makeCommandQueue() else {
             fatalError("Unable to create Metal command queue")
@@ -454,11 +465,31 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
 
         let now = CACurrentMediaTime()
         nextRainGlyphMutationTime = now + rainGlyphMutationPeriod
-        updateClockTextIfNeeded(force: true, now: now)
+
+        if showsDigitalClock {
+            updateClockTextIfNeeded(force: true, now: now)
+        }
     }
 
     func resetFrameClock() {
         lastFrameTime = CACurrentMediaTime()
+    }
+
+    func updateVisualSettings(showsDigitalClock: Bool, rainDensity: RainDensity) {
+        if self.showsDigitalClock != showsDigitalClock {
+            self.showsDigitalClock = showsDigitalClock
+
+            if showsDigitalClock {
+                updateClockTextIfNeeded(force: true, now: CACurrentMediaTime())
+            } else {
+                discardClockResources()
+            }
+        }
+
+        if self.rainDensity != rainDensity {
+            self.rainDensity = rainDensity
+            rebuildColumns()
+        }
     }
 
     func resize(to size: CGSize) {
@@ -469,10 +500,13 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
 
         viewportSize = newSize
         rebuildColumns()
-        clockInstancesDirty = true
-        clockTexture = nil
-        clockTextureQuad = nil
-        clockTextureScale = 0
+
+        if showsDigitalClock {
+            clockInstancesDirty = true
+            clockTexture = nil
+            clockTextureQuad = nil
+            clockTextureScale = 0
+        }
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
@@ -505,8 +539,10 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
             return
         }
 
-        let backingScale = max(1, Float(view.window?.backingScaleFactor ?? view.layer?.contentsScale ?? 1))
-        renderClockTextureIfNeeded(commandBuffer: commandBuffer, backingScale: backingScale)
+        if showsDigitalClock {
+            let backingScale = max(1, Float(view.window?.backingScaleFactor ?? view.layer?.contentsScale ?? 1))
+            renderClockTextureIfNeeded(commandBuffer: commandBuffer, backingScale: backingScale)
+        }
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
             return
@@ -529,7 +565,7 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: rainInstanceCount)
         }
 
-        if let clockTexture, var clockTextureQuad {
+        if showsDigitalClock, let clockTexture, var clockTextureQuad {
             encoder.setRenderPipelineState(texturePipelineState)
             encoder.setVertexBytes(&clockTextureQuad, length: MemoryLayout<GlyphInstance>.stride, index: 0)
             encoder.setFragmentTexture(clockTexture, index: 0)
@@ -559,13 +595,15 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
             nextRainGlyphMutationTime = now + rainGlyphMutationPeriod
         }
 
-        if now >= nextClockGlyphMutationTime && now >= nextClockGlyphMutationBatchTime {
-            mutateClockGlyphs(now: now)
-            nextClockGlyphMutationBatchTime = now + clockGlyphMutationBatchInterval
-        }
+        if showsDigitalClock {
+            if now >= nextClockGlyphMutationTime && now >= nextClockGlyphMutationBatchTime {
+                mutateClockGlyphs(now: now)
+                nextClockGlyphMutationBatchTime = now + clockGlyphMutationBatchInterval
+            }
 
-        if now >= nextClockTextCheckTime {
-            updateClockTextIfNeeded(now: now)
+            if now >= nextClockTextCheckTime {
+                updateClockTextIfNeeded(now: now)
+            }
         }
     }
 
@@ -580,14 +618,16 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
             return
         }
 
-        let count = max(1, Int(viewportSize.x / columnSpacing))
+        let mediumCount = max(1, Int(viewportSize.x / columnSpacing))
+        let count = max(1, Int((Float(mediumCount) * rainDensity.columnMultiplier).rounded()))
+        let effectiveColumnSpacing = columnSpacing / rainDensity.columnMultiplier
         rainGlyphRowsPerColumn = max(1, Int(ceil(viewportSize.y / (minFontSize + 4))) + 2)
         rainGlyphIndices = (0..<(count * rainGlyphRowsPerColumn)).map { _ in
             UInt32(randomGlyphIndex())
         }
         columns = (0..<count).map { index in
             makeColumn(
-                index: index,
+                centerX: (Float(index) + 0.5) * effectiveColumnSpacing,
                 headY: random.nextFloat(in: 0...viewportSize.y),
                 glyphOffset: index * rainGlyphRowsPerColumn
             )
@@ -597,15 +637,13 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
         markRainGlyphIndicesDirty()
     }
 
-    private func makeColumn(index: Int, headY: Float, glyphOffset: Int) -> RainColumn {
+    private func makeColumn(centerX: Float, headY: Float, glyphOffset: Int) -> RainColumn {
         let speed = random.nextFloat(in: minSpeed...maxSpeed)
         let fontSize = fontSize(for: speed)
         let cellHeight = fontSize + 4
         let length = random.nextInt(in: minRainLength...maxRainLength)
         let rowCount = min(rainGlyphRowsPerColumn, max(1, Int(ceil(viewportSize.y / cellHeight)) + 2))
         let derived = rainColumnDerivedValues(fontSize: fontSize, cellHeight: cellHeight, length: length)
-        let centerX = Float(index) * columnSpacing + columnSpacing * 0.5
-
         return RainColumn(
             centerX: centerX,
             headY: headY,
@@ -696,6 +734,23 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
         if mutated {
             clockInstancesDirty = true
         }
+    }
+
+    private func discardClockResources() {
+        clockInstanceBuffer = nil
+        clockTexture = nil
+        clockTextureQuad = nil
+        clockTextureScale = 0
+        clockInstances.removeAll(keepingCapacity: false)
+        clockClusters.removeAll(keepingCapacity: false)
+        cachedClockText = ""
+        cachedClockMinute = -1
+        clockTotalColumns = 0
+        clockInstancesDirty = false
+        clockInstanceCount = 0
+        nextClockGlyphMutationTime = .greatestFiniteMagnitude
+        nextClockGlyphMutationBatchTime = .greatestFiniteMagnitude
+        nextClockTextCheckTime = .greatestFiniteMagnitude
     }
 
     private func prepareRainColumnStaticBuffer(at bufferIndex: Int) -> MTLBuffer? {
@@ -808,13 +863,22 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
 
         let targetWidth = viewportSize.x * clockWidthFraction
         let cellSize = targetWidth / Float(clockTotalColumns)
-        let size = SIMD2<Float>(targetWidth, Float(clockRows) * cellSize)
+        let cellAdvance = cellSize * clockSpacingScale
+        let size = SIMD2<Float>(
+            Float(max(0, clockTotalColumns - 1)) * cellAdvance + cellSize,
+            Float(max(0, clockRows - 1)) * cellAdvance + cellSize
+        )
         let screenOrigin = SIMD2<Float>(
             (viewportSize.x - size.x) / 2,
             (viewportSize.y - size.y) / 2
         )
 
-        return ClockLayout(origin: origin ?? screenOrigin, size: size, cellSize: cellSize)
+        return ClockLayout(
+            origin: origin ?? screenOrigin,
+            size: size,
+            cellSize: cellSize,
+            cellAdvance: cellAdvance
+        )
     }
 
     private func renderClockTextureIfNeeded(commandBuffer: MTLCommandBuffer, backingScale: Float) {
@@ -915,8 +979,8 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
                 }
 
                 let cellOrigin = SIMD2<Float>(
-                    layout.origin.x + Float(column) * layout.cellSize,
-                    layout.origin.y + Float(row) * layout.cellSize
+                    layout.origin.x + Float(column) * layout.cellAdvance,
+                    layout.origin.y + Float(row) * layout.cellAdvance
                 )
                 buildClockStroke(
                     cellOrigin: cellOrigin,
@@ -935,7 +999,8 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
         into instances: inout [GlyphInstance]
     ) {
         let glyphStep = clockGlyphStep(for: cellSize)
-        let clusterSize = glyphStep * Float(clockSideCount)
+        let glyphCenterStep = glyphStep * clockSpacingScale
+        let clusterSize = glyphStep + glyphCenterStep * Float(max(0, clockSideCount - 1))
         let start = SIMD2<Float>(
             cellOrigin.x + cellSize / 2 - clusterSize / 2,
             cellOrigin.y + cellSize / 2 - clusterSize / 2
@@ -958,10 +1023,10 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
                     foregroundSize.y * clockGlowScale
                 )
                 let position = SIMD2<Float>(
-                    start.x + Float(column) * glyphStep + glyphStep / 2,
-                    start.y + Float(row) * glyphStep + glyphStep / 2
+                    start.x + Float(column) * glyphCenterStep + glyphStep / 2,
+                    start.y + Float(row) * glyphCenterStep + glyphStep / 2
                 )
-                let glowColor = SIMD4<Float>(0.48, 1.0, 0.62, 0.10)
+                let glowColor = SIMD4<Float>(0.16, 0.76, 0.24, 0.076)
                 let foregroundColor = clockColor(for: glyph.whiteness)
 
                 appendGlyph(
@@ -1035,10 +1100,10 @@ final class MetalRainRenderer: NSObject, MTKViewDelegate {
     private func clockColor(for whiteness: Float) -> SIMD4<Float> {
         let value = max(0, min(1, whiteness))
         return SIMD4<Float>(
-            0.50 + 0.48 * value,
-            0.82 + 0.18 * value,
-            0.56 + 0.42 * value,
-            0.80 + 0.20 * value
+            0.20 + 0.30 * value,
+            0.72 + 0.24 * value,
+            0.22 + 0.20 * value,
+            0.70 + 0.18 * value
         )
     }
 

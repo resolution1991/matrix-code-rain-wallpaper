@@ -55,12 +55,25 @@ final class WallpaperController: NSObject {
     }
 
     func updateSettings(_ settings: AppSettings) {
+        let previousSettings = self.settings
         self.settings = settings
         SettingsStore.save(settings)
-        configureFullscreenMonitoring()
-        configurePowerMonitoring()
-        updateFullscreenPauseState()
-        updatePowerPauseState()
+
+        if previousSettings.pauseWhenAllScreensAreFullscreen != settings.pauseWhenAllScreensAreFullscreen {
+            configureFullscreenMonitoring()
+            updateFullscreenPauseState()
+        }
+
+        if previousSettings.pauseWhenOnBattery != settings.pauseWhenOnBattery {
+            configurePowerMonitoring()
+            updatePowerPauseState()
+        }
+
+        if previousSettings.showsDigitalClock != settings.showsDigitalClock ||
+            previousSettings.rainDensity != settings.rainDensity {
+            windows.forEach { $0.updateVisualSettings(settings) }
+        }
+
         applyPauseState()
     }
 
@@ -77,7 +90,11 @@ final class WallpaperController: NSObject {
     func rebuildWindows() {
         closeWindows()
         windows = NSScreen.screens.map { screen in
-            let window = WallpaperWindow(screen: screen, isPaused: isEffectivelyPaused)
+            let window = WallpaperWindow(
+                screen: screen,
+                isPaused: isEffectivelyPaused,
+                settings: settings
+            )
             return window
         }
         applyPauseState()

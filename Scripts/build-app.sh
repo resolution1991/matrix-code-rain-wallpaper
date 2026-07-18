@@ -32,7 +32,9 @@ install -d "$RESOURCES_DIR"
 install -m 755 "$BUILD_PATH/release/$SWIFT_EXECUTABLE_NAME" "$MACOS_DIR/$BUNDLE_EXECUTABLE_NAME"
 install -m 644 "Packaging/Info.plist" "$CONTENTS_DIR/Info.plist"
 swift "$ROOT_DIR/Scripts/generate-app-icon.swift" "$ICONSET_DIR"
-iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/$ICON_NAME.icns"
+swift "$ROOT_DIR/Scripts/generate-icns.swift" \
+  "$ICONSET_DIR/icon_512x512@2x.png" \
+  "$RESOURCES_DIR/$ICON_NAME.icns"
 
 codesign --force --deep --sign - "$APP_BUNDLE"
 codesign --verify --deep --strict "$APP_BUNDLE"

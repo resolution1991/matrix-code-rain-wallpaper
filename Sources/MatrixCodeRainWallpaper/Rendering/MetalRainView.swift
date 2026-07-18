@@ -5,11 +5,8 @@ import MetalKit
 final class MetalRainView: MTKView {
     private var rainRenderer: MetalRainRenderer?
 
-    convenience init(frame frameRect: NSRect) {
-        self.init(frame: frameRect, device: MTLCreateSystemDefaultDevice())
-    }
-
-    override init(frame frameRect: NSRect, device: MTLDevice?) {
+    init(frame frameRect: NSRect, settings: AppSettings) {
+        let device = MTLCreateSystemDefaultDevice()
         super.init(frame: frameRect, device: device)
 
         colorPixelFormat = .bgra8Unorm
@@ -24,7 +21,12 @@ final class MetalRainView: MTKView {
             return
         }
 
-        let renderer = MetalRainRenderer(device: device, pixelFormat: colorPixelFormat)
+        let renderer = MetalRainRenderer(
+            device: device,
+            pixelFormat: colorPixelFormat,
+            showsDigitalClock: settings.showsDigitalClock,
+            rainDensity: settings.rainDensity
+        )
         delegate = renderer
         rainRenderer = renderer
         renderer.resize(to: bounds.size)
@@ -41,6 +43,13 @@ final class MetalRainView: MTKView {
     func resume() {
         rainRenderer?.resetFrameClock()
         isPaused = false
+    }
+
+    func updateVisualSettings(_ settings: AppSettings) {
+        rainRenderer?.updateVisualSettings(
+            showsDigitalClock: settings.showsDigitalClock,
+            rainDensity: settings.rainDensity
+        )
     }
 
     override func setFrameSize(_ newSize: NSSize) {

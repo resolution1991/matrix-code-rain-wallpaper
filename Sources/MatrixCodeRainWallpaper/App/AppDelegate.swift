@@ -36,6 +36,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         action: #selector(togglePauseWhenOnBattery),
         keyEquivalent: ""
     )
+    private let showDigitalClockItem = NSMenuItem(
+        title: "数字时钟 / Digital Clock",
+        action: #selector(toggleDigitalClock),
+        keyEquivalent: ""
+    )
+    private let rainDensityItem = NSMenuItem(
+        title: "雨滴密度 / Rain Density",
+        action: nil,
+        keyEquivalent: ""
+    )
+    private var rainDensityItems: [RainDensity: NSMenuItem] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureStatusItem()
@@ -67,6 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launchAtLoginItem.target = self
         pauseWhenFullscreenItem.target = self
         pauseWhenOnBatteryItem.target = self
+        showDigitalClockItem.target = self
+        configureRainDensityMenu()
 
         menu.addItem(appNameItem)
         menu.addItem(authorItem)
@@ -76,6 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(launchAtLoginItem)
         menu.addItem(pauseWhenFullscreenItem)
         menu.addItem(pauseWhenOnBatteryItem)
+        menu.addItem(.separator())
+        menu.addItem(showDigitalClockItem)
+        menu.addItem(rainDensityItem)
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "退出 / Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
@@ -125,6 +141,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuItems()
     }
 
+    @objc private func toggleDigitalClock() {
+        var settings = wallpaperController.settings
+        settings.showsDigitalClock.toggle()
+        wallpaperController.updateSettings(settings)
+        updateMenuItems()
+    }
+
+    @objc private func selectRainDensity(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let density = RainDensity(rawValue: rawValue) else {
+            return
+        }
+
+        var settings = wallpaperController.settings
+        guard settings.rainDensity != density else {
+            return
+        }
+
+        settings.rainDensity = density
+        wallpaperController.updateSettings(settings)
+        updateMenuItems()
+    }
+
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
     }
@@ -140,6 +179,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         pauseWhenFullscreenItem.state = settings.pauseWhenAllScreensAreFullscreen ? .on : .off
         pauseWhenOnBatteryItem.state = settings.pauseWhenOnBattery ? .on : .off
+        showDigitalClockItem.state = settings.showsDigitalClock ? .on : .off
+
+        for (density, item) in rainDensityItems {
+            item.state = density == settings.rainDensity ? .on : .off
+        }
+    }
+
+    private func configureRainDensityMenu() {
+        let menu = NSMenu()
+        let titles: [RainDensity: String] = [
+            .low: "低 / Low",
+            .medium: "中（默认）/ Medium (Default)",
+            .high: "高 / High"
+        ]
+
+        for density in RainDensity.allCases {
+            let item = NSMenuItem(
+                title: titles[density] ?? density.rawValue,
+                action: #selector(selectRainDensity(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = density.rawValue
+            menu.addItem(item)
+            rainDensityItems[density] = item
+        }
+
+        rainDensityItem.submenu = menu
     }
 
     private func launchAtLoginTitle(for settings: AppSettings) -> String {

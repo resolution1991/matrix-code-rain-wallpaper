@@ -3,49 +3,9 @@
 import AppKit
 import Foundation
 
-enum MatrixLogoIcon {
-    static func draw(in rect: NSRect) {
-        let side = min(rect.width, rect.height)
-        let bounds = NSRect(
-            x: rect.midX - side / 2,
-            y: rect.midY - side / 2,
-            width: side,
-            height: side
-        )
-
-        let background = NSBezierPath(
-            roundedRect: bounds.insetBy(dx: side * 0.074, dy: side * 0.074),
-            xRadius: side * 0.191,
-            yRadius: side * 0.191
-        )
-        NSColor.white.setFill()
-        background.fill()
-
-        let strokeWidth = side * 0.117
-        let markOuterInset = side * 0.247
-        let markCenterInset = markOuterInset + strokeWidth / 2
-        let leftX = bounds.minX + markCenterInset
-        let rightX = bounds.maxX - markCenterInset
-        let topY = bounds.maxY - markCenterInset
-        let bottomY = bounds.minY + markCenterInset
-        let notchY = bounds.minY + side * 0.473
-
-        let mark = NSBezierPath()
-        mark.move(to: NSPoint(x: leftX, y: bottomY))
-        mark.line(to: NSPoint(x: leftX, y: topY))
-        mark.line(to: NSPoint(x: bounds.midX, y: notchY))
-        mark.line(to: NSPoint(x: rightX, y: topY))
-        mark.line(to: NSPoint(x: rightX, y: bottomY))
-        mark.lineCapStyle = .round
-        mark.lineJoinStyle = .round
-        mark.lineWidth = strokeWidth
-
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current?.compositingOperation = .destinationOut
-        NSColor.black.setStroke()
-        mark.stroke()
-        NSGraphicsContext.restoreGraphicsState()
-    }
+let sourceURL = URL(fileURLWithPath: "Assets/AppIcon.png")
+guard let sourceImage = NSImage(contentsOf: sourceURL) else {
+    fatalError("Unable to load app icon at \(sourceURL.path)")
 }
 
 let iconsetPath = CommandLine.arguments.dropFirst().first ?? ".build/MatrixCodeRainWallpaper.iconset"
@@ -89,7 +49,12 @@ for icon in icons {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = context
     context.imageInterpolation = .high
-    MatrixLogoIcon.draw(in: NSRect(x: 0, y: 0, width: icon.pixels, height: icon.pixels))
+    sourceImage.draw(
+        in: NSRect(x: 0, y: 0, width: icon.pixels, height: icon.pixels),
+        from: .zero,
+        operation: .copy,
+        fraction: 1
+    )
     NSGraphicsContext.restoreGraphicsState()
 
     guard let png = representation.representation(using: .png, properties: [:]) else {
